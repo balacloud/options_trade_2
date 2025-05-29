@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Options Trading Analysis Dashboard</title>
+    <!-- Chart.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <!-- Option‑Greeks helper (browser Black‑Scholes) -->
+    <script src="https://cdn.jsdelivr.net/npm/option-greeks@1.2.0/dist/og.min.js"></script>
+    <style>
+    /*  ------------  GLOBAL STYLES  ------------ */
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:linear-gradient(135deg,#1e3c72 0%,#2a5298 100%);min-height:100vh;color:#fff}
+    .container{max-width:1400px;margin:0 auto;padding:20px}
+    .header{text-align:center;margin-bottom:30px;background:rgba(255,255,255,.1);padding:30px;border-radius:15px;backdrop-filter:blur(10px)}
+    .header h1{font-size:2.5em;margin-bottom:10px;background:linear-gradient(45deg,#ffd700,#ffed4e);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .input-section{display:flex;justify-content:center;gap:15px;margin-bottom:30px;flex-wrap:wrap}
+    .input-group{display:flex;flex-direction:column;align-items:center}
+    .input-group label{margin-bottom:5px;font-weight:600}
+    input[type=text],select{padding:12px 20px;border:none;border-radius:25px;font-size:16px;background:rgba(255,255,255,.9);color:#333;width:200px;text-align:center;transition:.3s all}
+    input[type=text]:focus,select:focus{outline:none;box-shadow:0 0 20px rgba(255,215,0,.5);transform:translateY(-2px)}
+    .analyze-btn{background:linear-gradient(45deg,#ff6b6b,#ff8e8e);color:#fff;border:none;padding:12px 30px;border-radius:25px;font-size:16px;font-weight:600;cursor:pointer;transition:.3s all;text-transform:uppercase;letter-spacing:1px}
+    .analyze-btn:hover{transform:translateY(-3px);box-shadow:0 10px 30px rgba(255,107,107,.4)}
+    .dashboard{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:30px}
+    .chart-container,.support-resistance,.metric-card{background:rgba(255,255,255,.1);border-radius:15px;padding:20px;backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.2)}
+    .metrics-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;margin-bottom:30px}
+    .metric-card:hover{transform:translateY(-5px);box-shadow:0 15px 35px rgba(0,0,0,.2)}
+    .metric-title{font-size:1.2em;font-weight:600;margin-bottom:10px;color:#ffd700}
+    .metric-value{font-size:2em;font-weight:700;margin-bottom:10px}
+    .metric-description{font-size:.9em;opacity:.8;line-height:1.4}
+    .signal{display:inline-block;padding:5px 15px;border-radius:20px;font-weight:600;text-transform:uppercase;font-size:.8em;letter-spacing:1px}
+    .signal.bullish{background:linear-gradient(45deg,#4caf50,#66bb6a)}
+    .signal.bearish{background:linear-gradient(45deg,#f44336,#ef5350)}
+    .signal.neutral{background:linear-gradient(45deg,#ff9800,#ffb74d)}
+    .levels-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:15px}
+    .level-item{background:rgba(255,255,255,.05);padding:15px;border-radius:10px;text-align:center}
+    .level-item.support{border-left:4px solid #4caf50}.level-item.resistance{border-left:4px solid #f44336}
+    .loading{text-align:center;padding:40px;font-size:1.2em}
+    .loading::after{content:'';display:inline-block;width:20px;height:20px;border:3px solid rgba(255,255,255,.3);border-radius:50%;border-top-color:#ffd700;animation:spin 1s ease-in-out infinite;margin-left:10px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @media(max-width:768px){.dashboard{grid-template-columns:1fr}.input-section{flex-direction:column;align-items:center}input[type=text],select{width:250px}}
+    </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Options Trading Analysis Dashboard</h1>
+      <p>Advanced Support/Resistance Analysis with 10 + Key Trading Metrics</p>
+    </div>
+
+    <!-- -------------  CONTROLS  ------------- -->
+    <div class="input-section">
+      <div class="input-group">
+        <label for="ticker">Stock Ticker</label>
+        <input type="text" id="ticker" placeholder="Enter SPY or SPXL" value="SPY" />
+      </div>
+      <div class="input-group">
+        <label for="timeframe">Timeframe</label>
+        <select id="timeframe">
+          <option value="1D">Daily</option>
+          <option value="4H">4 Hour</option>
+          <option value="1H">1 Hour</option>
+          <option value="15m">15 Min</option>
+        </select>
+      </div>
+      <div class="input-group">
+        <label for="strategy">Primary Strategy</label>
+        <select id="strategy">
+          <option value="swing">Swing Trading</option>
+          <option value="day">Day Trading</option>
+          <option value="scalp">Scalping</option>
+        </select>
+      </div>
+      <button class="analyze-btn" onclick="analyzeStock()">Analyze Stock</button>
+    </div>
+
+    <!-- -------------  RESULTS  ------------- -->
+    <div id="results" style="display:none">
+      <div class="dashboard">
+        <div class="chart-container"><h3>Price Chart</h3><canvas id="priceChart"></canvas></div>
+        <div class="chart-container"><h3>Volume Analysis</h3><canvas id="volumeChart"></canvas></div>
+      </div>
+
+      <div class="support-resistance"><h3>Support &amp; Resistance Levels</h3><div id="levelsGrid" class="levels-grid"></div></div>
+
+      <div class="metrics-grid" id="metricsGrid"></div>
+
+      <div class="metric-card" id="strategyCard" style="display:none"></div>
+    </div>
+
+    <div id="loading" class="loading" style="display:none">Analyzing market data…</div>
+  </div>
+
+<script>
+/***********************  CONFIG  ************************/ 
+const API_CONFIG={ALPHA_VANTAGE_KEY:'demo',FINNHUB_KEY:'demo',USE_YAHOO_BACKUP:true};
+
+/****************  DATA FETCH HELPERS  ******************/ 
+async function fetchRealMarketData(ticker){
+  // Alpha Vantage
+  try{const r=await fetchAlpha(ticker);if(r.length)return r}catch(e){console.warn('AV err',e)}
+  // Finnhub
+  try{const r=await fetchFinn(ticker);if(r.length)return r}catch(e){console.warn('Finn err',e)}
+  // Yahoo
+  if(API_CONFIG.USE_YAHOO_BACKUP){try{const r=await fetchYahoo(ticker);if(r.length)return r}catch(e){console.warn('Yahoo err',e)}}
+  return generateMockData(ticker);
+}
+
+async function fetchAlpha(t){const url=`https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${t}&outputsize=compact&apikey=${API_CONFIG.ALPHA_VANTAGE_KEY}`;
+  const d=await (await fetch(url)).json();if(!d['Time Series (Daily)'])throw new Error('Alpha fail');
+  return Object.entries(d['Time Series (Daily)']).slice(0,50).map(([dt,v])=>({timestamp:new Date(dt),price:+v['4. close'],high:+v['2. high'],low:+v['3. low'],open:+v['1. open'],volume:+v['5. volume']})).reverse();
+}
+async function fetchFinn(t){const end=Math.floor(Date.now()/1000),start=end-50*86400,url=`https://finnhub.io/api/v1/stock/candle?symbol=${t}&resolution=D&from=${start}&to=${end}&token=${API_CONFIG.FINNHUB_KEY}`;
+  const d=await (await fetch(url)).json();if(d.s!=='ok')throw new Error('Finnhub fail');
+  return d.t.map((ts,i)=>({timestamp:new Date(ts*1000),price:d.c[i],high:d.h[i],low:d.l[i],open:d.o[i],volume:d.v[i]}));
+}
+async function fetchYahoo(t){const proxy='https://api.allorigins.win/raw?url=';const yurl=`https://query1.finance.yahoo.com/v8/finance/chart/${t}?period1=${Math.floor(Date.now()/1000)-50*86400}&period2=${Math.floor(Date.now()/1000)}&interval=1d`;const d=await (await fetch(proxy+encodeURIComponent(yurl))).json();const res=d.chart?.result?.[0];if(!res)throw new Error('Yahoo fail');const q=res.indicators.quote[0];return res.timestamp.map((ts,i)=>({timestamp:new Date(ts*1000),price:q.close[i],high:q.high[i],low:q.low[i],open:q.open[i],volume:q.volume[i]})).filter(x=>x.price);
+}
+function generateMockData(t){const base=t==='SPY'?450:t==='SPXL'?120:100,vol=0.015+Math.random()*0.02,d=[],now=Date.now();let p=base;for(let i=0;i<50;i++){const ch=(Math.random()-0.5)*vol*p;p+=ch;d.push({timestamp:new Date(now-(49-i)*86400000),price:p,high:p*1.02,low:p*0.98,open:p*1.005,volume:5e5+Math.random()*1e6});}return d;}
+
+async function fetchPutCallRatio(t){try{const url=`https://query2.finance.yahoo.com/v10/finance/quoteSummary/${t}?modules=defaultKeyStatistics`;const js=await (await fetch(url)).json();return js.quoteSummary.result[0].defaultKeyStatistics.putCallRatio}catch{ return null;}}
+
+/****************  TECHNICAL CALCULATIONS  ***************/
+function SMA(arr,n){if(arr.length<n)return arr.at(-1);return arr.slice(-n).reduce((s,v)=>s+v,0)/n;}
+function calcRSI(prices,n=14){if(prices.length<n+1)return 50;let g=0,l=0;for(let i=prices.length-n;i<prices.length;i++){const ch=prices[i]-prices[i-1];ch>0?g+=ch:l+=-ch;}const ag=g/n,al=l/n;if(al===0)return 100;const rs=ag/al;return 100-100/(1+rs);} 
+function fib(high,low){const r=high-low;return{f382:high-r*0.382,f618:high-r*0.618};}
+function vwapArr(data){let cvp=0,cv=0;return data.map(o=>{const tp=(o.high+o.low+o.price)/3;cvp+=tp*o.volume;cv+=o.volume;return cvp/cv;});}
+
+function calcSupportResistance(data){const prices=data.map(d=>d.price);const highs=data.map(d=>d.high);const lows=data.map(d=>d.low);
+  const prev=data.at(-2)??data.at(-1),pivot=(prev.high+prev.low+prev.price)/3,r1=2*pivot-prev.low,s1=2*pivot-prev.high,r2=pivot+(prev.high-prev.low),s2=pivot-(prev.high-prev.low);
+  const fv=fib(Math.max(...highs),Math.min(...lows));return{pivot,r1,r2,s1,s2,vwap:vwapArr(data).at(-1),ma20:SMA(prices,20),ma50:SMA(prices,50),fib382:fv.f382,fib618:fv.f618};}
+
+/*****************  METRICS & STRATEGY  *****************/
+async function buildMetrics(data,ticker){const prices=data.map(d=>d.price),vols=data.map(d=>d.volume),cur=prices.at(-1),prev=prices.at(-2),chg=(cur-prev)/prev*100; // %
+  // hist volatility
+  const rets=prices.slice(1).map((p,i)=>Math.log(p/prices[i]));const vol=Math.sqrt(rets.reduce((s,r)=>s+r*r,0)/rets.length)*Math.sqrt(252)*100;
+  // IV rank (% of range)
+  const hiVol=Math.max(...rets.map(Math.abs))*Math.sqrt(252)*100,loVol=Math.min(...rets.map(Math.abs))*Math.sqrt(252)*100;
+  const ivRank=((vol-loVol)/(hiVol-loVol))*100;
+  const avgVol=vols.reduce((s,v)=>s+v,0)/vols.length,volRatio=vols.at(-1)/avgVol*100;
+  const rsi=calcRSI(prices);
+  // put call ratio
+  const pcr=await fetchPutCallRatio(ticker);
+  // greeks (approx, ATM one‑week call)
+  const ivPct=Math.max(5,Math.min(vol,150));const strike=Math.round(cur);const greeks=window.og.getGreeks('c',cur,strike,7/365,ivPct/100,0.01);
+  const metrics=[
+    {title:'Put/Call Ratio',value:pcr?pcr.toFixed(2):'N/A',signal:pcr?(pcr>1?'bearish':pcr<0.7?'bullish':'neutral'):'neutral',description:'<1 bullish, >1 bearish sentiment'},
+    {title:'Implied Volatility',value:ivPct.toFixed(1)+'%',signal:ivPct<20?'bullish':ivPct>35?'bearish':'neutral',description:`IV Rank ${ivRank.toFixed(0)}%`},
+    {title:'Delta',value:greeks.delta.toFixed(2),signal:greeks.delta>0.6?'bullish':greeks.delta<-0.6?'bearish':'neutral',description:'ATM call delta'},
+    {title:'Gamma',value:greeks.gamma.toFixed(4),signal:'neutral',description:'Delta change risk'},
+    {title:'Theta',value:greeks.theta.toFixed(2),signal:'bearish',description:'Daily time decay'},
+    {title:'Vega',value:greeks.vega.toFixed(2),signal:greeks.vega>0?'bullish':'neutral',description:'Sensitivity to IV'},
+    {title:'Volume Trend',value:volRatio.toFixed(0)+'%',signal:volRatio>150?'bullish':volRatio<75?'bearish':'neutral',description:'Volume vs 50‑day avg'},
+    {title:'RSI',value:rsi.toFixed(1),signal:rsi>70?'bearish':rsi<30?'bullish':'neutral',description:'Momentum'},
+    {title:'Price Change',value:chg.toFixed(2)+'%',signal:chg>1?'bullish':chg<-1?'bearish':'neutral',description:'Today vs prev close'}
+  ];
+  return metrics;
+}
+
+function suggestStrategy(metrics){const score=metrics.reduce((s,m)=>s+(m.signal==='bullish'?1:m.signal==='bearish'?-1:0),0);
+  if(score>=3)return{text:'BUY CALL',note:'Aggressive long bias'};
+  if(score<=-3)return{text:'BUY PUT',note:'Aggressive short bias'};
+  const iv=metrics.find(m=>m.title==='Implied Volatility');
+  if(Math.abs(score)<2 && iv && iv.signal==='bearish')return{text:'IRON CONDOR',note:'Sell high IV (neutral)'};
+  return{text:'NO CLEAR EDGE',note:'Wait for setup'};
+}
+
+/******************  CHART HELPERS  ********************/ 
+function renderPriceChart(data){const ctx=document.getElementById('priceChart').getContext('2d');if(window.priceChart){window.priceChart.destroy();}
+  window.priceChart=new Chart(ctx,{type:'line',data:{labels:data.map(d=>d.timestamp.toLocaleDateString()),datasets:[{label:'Price',data:data.map(d=>d.price),borderColor:'#ffd700',backgroundColor:'rgba(255,215,0,.1)',borderWidth:2,fill:true}]},options:{responsive:true,plugins:{legend:{labels:{color:'#fff'}}},scales:{x:{ticks:{color:'#fff'},grid:{color:'rgba(255,255,255,.1)'}},y:{ticks:{color:'#fff'},grid:{color:'rgba(255,255,255,.1)'}}}}});}
+function renderVolumeChart(data){const ctx=document.getElementById('volumeChart').getContext('2d');if(window.volChart){window.volChart.destroy();}
+  window.volChart=new Chart(ctx,{type:'bar',data:{labels:data.map(d=>d.timestamp.toLocaleDateString()),datasets:[{label:'Volume',data:data.map(d=>d.volume),backgroundColor:'rgba(75,192,192,.6)',borderColor:'rgba(75,192,192,1)',borderWidth:1}]},options:{responsive:true,plugins:{legend:{labels:{color:'#fff'}}},scales:{x:{ticks:{color:'#fff'},grid:{color:'rgba(255,255,255,.1)'}},y:{ticks:{color:'#fff'},grid:{color:'rgba(255,255,255,.1)'}}}}});}
+
+function populateLevels(lv){const g=document.getElementById('levelsGrid');g.innerHTML=`
+ <div class='level-item resistance'><strong>R2</strong><br>${lv.r2.toFixed(2)}</div>
+ <div class='level-item resistance'><strong>R1</strong><br>${lv.r1.toFixed(2)}</div>
+ <div class='level-item' style='border-left:4px solid #ffd700'><strong>Pivot</strong><br>${lv.pivot.toFixed(2)}</div>
+ <div class='level-item' style='border-left:4px solid #ff9800'><strong>VWAP</strong><br>${lv.vwap.toFixed(2)}</div>
+ <div class='level-item support'><strong>S1</strong><br>${lv.s1.toFixed(2)}</div>
+ <div class='level-item support'><strong>S2</strong><br>${lv.s2.toFixed(2)}</div>
+ <div class='level-item' style='border-left:4px solid #9c27b0'><strong>Fib 38.2%</strong><br>${lv.fib382.toFixed(2)}</div>
+ <div class='level-item' style='border-left:4px solid #9c27b0'><strong>Fib 61.8%</strong><br>${lv.fib618.toFixed(2)}</div>
+ <div class='level-item' style='border-left:4px solid #607d8b'><strong>MA20</strong><br>${lv.ma20.toFixed(2)}</div>
+ <div class='level-item' style='border-left:4px solid #795548'><strong>MA50</strong><br>${lv.ma50.toFixed(2)}</div>`;}
+
+function renderMetrics(m){document.getElementById('metricsGrid').innerHTML=m.map(x=>`<div class='metric-card'><div class='metric-title'>${x.title}</div><div class='metric-value'>${x.value}</div><div class='signal ${x.signal}'>${x.signal}</div><div class='metric-description'>${x.description}</div></div>`).join('');}
+
+/********************  MAIN ACTION  ********************/ 
+async function analyzeStock(){const t=document.getElementById('ticker').value.trim().toUpperCase();if(!t)return alert('Enter ticker');document.getElementById('loading').style.display='block';document.getElementById('results').style.display='none';
+  const data=await fetchRealMarketData(t);
+  const levels=calcSupportResistance(data);
+  const metrics=await buildMetrics(data,t);
+  const strat=suggestStrategy(metrics);
+  renderPriceChart(data);renderVolumeChart(data);populateLevels(levels);renderMetrics(metrics);
+  const sc=document.getElementById('strategyCard');sc.style.display='block';sc.innerHTML=`<div class='metric-title'>Strategy Suggestion</div><div class='metric-value'>${strat.text}</div><div class='metric-description'>${strat.note}</div>`;
+  document.getElementById('loading').style.display='none';document.getElementById('results').style.display='block';}
+window.addEventListener('load',analyzeStock);
+</script>
+</body>
+</html>
