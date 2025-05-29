@@ -55,7 +55,7 @@
   <div class="container">
     <div class="header">
       <h1>Options Trading Analysis Dashboard</h1>
-      <p>Support‑Resistance + 10 + Metrics with Live Data</p>
+      <p>Support‑Resistance &amp; 10 + Metrics (Client‑Side)</p>
     </div>
 
     <!-- ==== CONTROL PANEL ==== -->
@@ -82,7 +82,7 @@
         <div class="chart-container"><h3>Price Chart</h3><canvas id="priceChart"></canvas></div>
         <div class="chart-container"><h3>Volume</h3><canvas id="volumeChart"></canvas></div>
       </div>
-      <div class="support-resistance"><h3>Support & Resistance</h3><div id="levelsGrid" class="levels-grid"></div></div>
+      <div class="support-resistance"><h3>Support &amp; Resistance</h3><div id="levelsGrid" class="levels-grid"></div></div>
       <div id="metricsGrid" class="metrics-grid"></div>
       <div id="strategyCard" class="metric-card" style="display:none"></div>
     </div>
@@ -93,44 +93,14 @@
 
 <script>
 const API_CONFIG={ALPHA_VANTAGE_KEY:'demo',FINNHUB_KEY:'demo',USE_YAHOO_BACKUP:true};
-function log(msg){const d=document.getElementById('debug');d.innerHTML+=`<div>${new Date().toLocaleTimeString()} ▸ ${msg}</div>`;d.scrollTop=d.scrollHeight;}
+const log=msg=>{const d=document.getElementById('debug');d.innerHTML+=`<div>${new Date().toLocaleTimeString()} ▸ ${msg}</div>`;d.scrollTop=d.scrollHeight;};
 
-async function fetchRealMarketData(t){log(`▶ Attempt Alpha Vantage for ${t}`);try{const r=await fetchAlpha(t);log('✓ Alpha Vantage success');return r}catch(e){log('✗ Alpha Vantage failed');}
-  log('▶ Attempt Finnhub');try{const r=await fetchFinn(t);log('✓ Finnhub success');return r}catch(e){log('✗ Finnhub failed');}
-  if(API_CONFIG.USE_YAHOO_BACKUP){log('▶ Attempt Yahoo Finance');try{const r=await fetchYahoo(t);log('✓ Yahoo success');return r}catch(e){log('✗ Yahoo failed');}}
-  log('⚠ Using mock data');return generateMockData(t);}
+/***** API FETCH HELPERS *****/
+async function fetchRealMarketData(t){log(`▶ Alpha Vantage: ${t}`);try{return await fetchAlpha(t);}catch{log('✗ AV failed');}
+  log('▶ Finnhub');try{return await fetchFinn(t);}catch{log('✗ Finn failed');}
+  if(API_CONFIG.USE_YAHOO_BACKUP){log('▶ Yahoo');try{return await fetchYahoo(t);}catch{log('✗ Yahoo failed');}}
+  log('⚠ mock data');return generateMockData(t);}  
 
 async function fetchAlpha(t){const url=`https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${t}&outputsize=compact&apikey=${API_CONFIG.ALPHA_VANTAGE_KEY}`;
-  const js=await(fetch(url)).then(r=>r.json());if(!js['Time Series (Daily)'])throw'AV no data';return Object.entries(js['Time Series (Daily)']).slice(0,50).map(([d,v])=>({timestamp:new Date(d),price:+v['4. close'],high:+v['2. high'],low:+v['3. low'],open:+v['1. open'],volume:+v['5. volume']})).reverse();}
-async function fetchFinn(t){const end=Math.floor(Date.now()/1000),start=end-50*86400;const url=`https://finnhub.io/api/v1/stock/candle?symbol=${t}&resolution=D&from=${start}&to=${end}&token=${API_CONFIG.FINNHUB_KEY}`;const js=await(fetch(url)).then(r=>r.json());if(js.s!=='ok')throw'Finn no data';return js.t.map((ts,i)=>({timestamp:new Date(ts*1000),price:js.c[i],high:js.h[i],low:js.l[i],open:js.o[i],volume:js.v[i]}));}
-async function fetchYahoo(t){const proxy='https://api.allorigins.win/raw?url=';const url=`https://query1.finance.yahoo.com/v8/finance/chart/${t}?period1=${Math.floor(Date.now()/1000)-50*86400}&period2=${Math.floor(Date.now()/1000)}&interval=1d`;const js=await(fetch(proxy+encodeURIComponent(url))).then(r=>r.json());const res=js.chart?.result?.[0];if(!res)throw'No chart';const q=res.indicators.quote[0];return res.timestamp.map((ts,i)=>({timestamp:new Date(ts*1000),price:q.close[i],high:q.high[i],low:q.low[i],open:q.open[i],volume:q.volume[i]})).filter(x=>x.price);}
-function generateMockData(t){const base=t==='SPY'?450:t==='SPXL'?120:100,vol=0.015+Math.random()*0.02,arr=[],now=Date.now();let p=base;for(let i=0;i<50;i++){p+= (Math.random()-0.5)*vol*p;arr.push({timestamp:new Date(now-(49-i)*86400000),price:p,high:p*1.02,low:p*0.98,open:p*1.005,volume:5e5+Math.random()*1e6});}return arr;}
-async function fetchPutCallRatio(t){try{const url=`https://query2.finance.yahoo.com/v10/finance/quoteSummary/${t}?modules=defaultKeyStatistics`;const js=await(fetch(url)).then(r=>r.json());return js.quoteSummary.result[0].defaultKeyStatistics.putCallRatio}catch{return null;}}
-
-const SMA=(a,n)=>a.length<n?a.at(-1):a.slice(-n).reduce((s,v)=>s+v,0)/n;
-const calcRSI=(p,n=14)=>{if(p.length<n+1)return 50;let g=0,l=0;for(let i=p.length-n;i<p.length;i++){const ch=p[i]-p[i-1];ch>0?g+=ch:l-=ch;}const ag=g/n,al=l/n;if(!al)return 100;const rs=ag/al;return 100-100/(1+rs);} ;
-const fib=(h,l)=>{const r=h-l;return{f382:h-r*0.382,f618:h-r*0.618}};
-const vwapArr=d=>{let cvp=0,cv=0;return d.map(o=>{const tp=(o.high+o.low+o.price)/3;cvp+=tp*o.volume;cv+=o.volume;return cvp/cv;});};
-function calcSR(data){const prices=data.map(d=>d.price),highs=data.map(d=>d.high),lows=data.map(d=>d.low),prev=data.at(-2)||data.at(-1);
-  const pivot=(prev.high+prev.low+prev.price)/3,r1=2*pivot-prev.low,s1=2*pivot-prev.high,r2=pivot+(prev.high-prev.low),s2=pivot-(prev.high-prev.low);
-  const f=fib(Math.max(...highs),Math.min(...lows));return{pivot,r1,r2,s1,s2,vwap:vwapArr(data).at(-1),ma20:SMA(prices,20),ma50:SMA(prices,50),fib382:f.f382,fib618:f.f618};}
-
-async function buildMetrics(data,ticker){const prices=data.map(d=>d.price),vols=data.map(d=>d.volume),cur=prices.at(-1),prev=prices.at(-2),chg=(cur-prev)/prev*100;
-  const rets=prices.slice(1).map((p,i)=>Math.log(p/prices[i]));const vol=Math.sqrt(rets.reduce((s,r)=>s+r*r,0)/rets.length)*Math.sqrt(252)*100;
-  const hi=Math.max(...rets.map(Math.abs))*Math.sqrt(252)*100,lo=Math.min(...rets.map(Math.abs))*Math.sqrt(252)*100,ivRank=((vol-lo)/(hi-lo))*100;
-  const avgVol=vols.reduce((s,v)=>s+v,0)/vols.length,volRatio=vols.at(-1)/avgVol*100,rsi=calcRSI(prices),pcr=await fetchPutCallRatio(ticker);
-  const ivPct=Math.max(5,Math.min(vol,150)),strike=Math.round(cur),g=window.og.getGreeks('c',cur,strike,7/365,ivPct/100,0.01);
-  return[
-    {title:'Put/Call Ratio',value:pcr?pcr.toFixed(2):'N/A',signal:pcr?(pcr>1?'bearish':pcr<.7?'bullish':'neutral'):'neutral',description:'<1 bullish, >1 bearish'},
-    {title:'Implied Vol',value:ivPct.toFixed(1)+'%',signal:ivPct<20?'bullish':ivPct>35?'bearish':'neutral',description:`IV Rank ${ivRank.toFixed(0)}%`},
-    {title:'Delta',value:g.delta.toFixed(2),signal:g.delta>0.6?'bullish':g.delta<-0.6?'bearish':'neutral',description:'ATM delta'},
-    {title:'Gamma',value:g.gamma.toFixed(4),signal:'neutral',description:'Delta sensitivity'},
-    {title:'Theta',value:g.theta.toFixed(2),signal:'bearish',description:'Time decay'},
-    {title:'Vega',value:g.vega.toFixed(2),signal:g.vega>0?'bullish':'neutral',description:'IV sensitivity'},
-    {title:'Volume Trend',value:volRatio.toFixed(0)+'%',signal:volRatio>150?'bullish':volRatio<75?'bearish':'neutral',description:'Vs 50‑day avg'},
-    {title:'RSI',value:rsi.toFixed(1),signal:rsi>70?'bearish':rsi<30?'bullish':'neutral',description:'Momentum'},
-    {title:'Price Δ',value:chg.toFixed(2)+'%',signal:chg>1?'bullish':chg<-1?'bearish':'neutral',description:'Today vs prev'}
-  ];}
-function suggest(metrics){const score=metrics.reduce((s,m)=>s+(m.signal==='bullish'?1:m.signal==='bearish'?-1:0),0);if(score>=3)return{t:'BUY CALL',n:'Long bias'};if(score<=-3)return{t:'BUY PUT',n:'Short bias'};const iv=metrics.find(x=>x.title==='Implied Vol');if(Math.abs(score)<2&&iv&&iv.signal==='bearish')return{t:'IRON CONDOR',n:'Sell premium'};return{t:'NO EDGE',n:'Wait'};}
-
-function priceChart(data){const ctx=document.getElementById('priceChart').getContext('2d');if(window.pc)window.pc.destroy();window.pc=new Chart(ctx,{type:'line',data:{labels:data.map(d=>d.timestamp.
+  const js=await(fetch(url)).then(r=>r.json());if(!js['Time Series (Daily)'])throw'No AV';return Object.entries(js['Time Series (Daily)']).slice(0,50).map(([d,v])=>({timestamp:new Date(d),price:+v['4. close'],high:+v['2. high'],low:+v['3. low'],open:+v['1. open'],volume:+v['5. volume']})).reverse();}
+async function fetchFinn(t){const end=Math.floor(Date.now()/1000),start=end-50*86400;const url=`https
